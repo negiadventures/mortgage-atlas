@@ -15,7 +15,9 @@ amortization with payoff and home value projections.
 
 ![Desktop view](img1.png)
 
-![Mobile view](img2.png)
+![Desktop view](img2.png)
+
+![Desktop view](img3.png)
 
 ## Getting started
 
