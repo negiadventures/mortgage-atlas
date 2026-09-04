@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { buildSchedule, carryingCostsForYear, round2 } from './mortgage.js'
 import './App.css'
 
 const DEFAULTS = {
@@ -11,6 +12,7 @@ const DEFAULTS = {
   insuranceAnnual: 1526,
   pmiRate: 0.8,
   homeValueGrowthRate: 3.5,
+  costInflationRate: 3,
   rentalIncomeMonthly: 0,
 }
 
@@ -88,6 +90,14 @@ const INPUT_FIELDS = [
     helper: 'Estimated annual appreciation rate.',
   },
   {
+    key: 'costInflationRate',
+    label: 'Cost inflation',
+    unit: '% / yr',
+    step: '0.1',
+    min: '0',
+    helper: 'Yearly rise in insurance and HOA. Tax follows the home value.',
+  },
+  {
     key: 'rentalIncomeMonthly',
     label: 'Rental income',
     unit: '$ / mo',
@@ -110,8 +120,6 @@ const currencyFormatterShort = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 0,
 })
 
-const round2 = (value) => Math.round((value + Number.EPSILON) * 100) / 100
-
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
 const parseNumber = (value, fallback = 0) => {
@@ -123,52 +131,29 @@ const formatMoney = (value) => currencyFormatter.format(value)
 const formatMoneyShort = (value) => currencyFormatterShort.format(value)
 const formatPercent = (value) => `${value.toFixed(2)}%`
 
-const computeMortgage = (loan, rate, years) => {
-  const monthlyRate = rate / 12
-  const numPayments = years * 12
-
-  let monthlyPayment = 0
-  if (rate <= 0) {
-    monthlyPayment = loan / numPayments
-  } else {
-    monthlyPayment = loan * monthlyRate / (1 - Math.pow(1 + monthlyRate, -numPayments))
-  }
-
-  const totalPaid = monthlyPayment * numPayments
-  const totalInterest = totalPaid - loan
-
-  const schedule = []
-  let balance = loan
-
-  for (let year = 1; year <= years; year += 1) {
-    const startBalance = balance
-    let principalPaidYear = 0
-    let interestPaidYear = 0
-
-    for (let month = 0; month < 12; month += 1) {
-      const interestPayment = balance * monthlyRate
-      const principalPayment = monthlyPayment - interestPayment
-      principalPaidYear += principalPayment
-      interestPaidYear += interestPayment
-      balance -= principalPayment
-    }
-
-    if (year === years) {
-      balance = Math.max(balance, 0)
-    }
-
-    schedule.push({
-      year,
-      start_balance: round2(startBalance),
-      principal_paid: round2(principalPaidYear),
-      interest_paid: round2(interestPaidYear),
-      end_balance: round2(balance),
-    })
-  }
-
-  return [monthlyPayment, totalPaid, totalInterest, schedule]
+/**
+ * PMI is the one line here that has an end date, so the label carries it.
+ * A flat "$300.00" reads as a cost you pay forever, which is exactly the
+ * impression the old maths gave and the reason the totals were so far out.
+ */
+const pmiLabel = (months) => {
+  if (months <= 0) return 'PMI'
+  const years = Math.floor(months / 12)
+  const rest = months % 12
+  if (years <= 0) return `PMI (${months} mo, then $0)`
+  const tail = rest > 0 ? ` ${rest} mo` : ''
+  return `PMI (${years} yr${tail}, then $0)`
 }
 
+/**
+ * The same output shape the page has always rendered, now assembled from the
+ * tested functions in mortgage.js rather than worked out inline.
+ *
+ * The per-year figures come from a real month-by-month walk, so the totals here
+ * are read off the last row rather than recomputed as `monthly x 12 x years`.
+ * That shortcut was only ever right while nothing changed month to month, and
+ * now PMI stops and the tax bill grows.
+ */
 const generateData = ({
   homePrice,
   downPaymentPercent,
@@ -179,40 +164,64 @@ const generateData = ({
   insuranceAnnual,
   pmiRate,
   homeValueGrowthRate,
+  costInflationRate,
   rentalIncomeMonthly,
 }) => {
   const downPayment = homePrice * downPaymentPercent
   const loanAmount = Math.max(homePrice - downPayment, 0)
 
-  const propertyTaxMonthly = homePrice * propertyTaxRate / 12
-  const insuranceMonthly = insuranceAnnual / 12
-  const pmiMonthly = downPaymentPercent < 0.2 ? loanAmount * pmiRate / 12 : 0
+  const shared = {
+    homePrice,
+    downPaymentPercent,
+    loan: loanAmount,
+    propertyTaxRate,
+    insuranceAnnual,
+    hoaMonthly,
+    pmiRate,
+    homeValueGrowthRate,
+    costInflationRate,
+    rentalIncomeMonthly,
+  }
 
-  const [monthlyPayment30, totalPaid30, totalInterest30, schedule30] =
-    computeMortgage(loanAmount, rate30, 30)
-  const allIn30 = monthlyPayment30 + propertyTaxMonthly + hoaMonthly + insuranceMonthly + pmiMonthly
-  const netMonthly30 = allIn30 - rentalIncomeMonthly
+  // Year one, which is what the summary cards show: the monthly figure somebody
+  // would actually write a cheque for in the first twelve months.
+  const firstYear = carryingCostsForYear({
+    year: 1,
+    homePrice,
+    propertyTaxRate,
+    insuranceAnnual,
+    hoaMonthly,
+    homeValueGrowthRate,
+    costInflationRate,
+  })
 
-  const [monthlyPayment15, totalPaid15, totalInterest15, schedule15] =
-    computeMortgage(loanAmount, rate15, 15)
-  const allIn15 = monthlyPayment15 + propertyTaxMonthly + hoaMonthly + insuranceMonthly + pmiMonthly
-  const netMonthly15 = allIn15 - rentalIncomeMonthly
+  const term = (annualRate, years) => {
+    const built = buildSchedule({ ...shared, annualRate, years })
+    const last = built.rows[built.rows.length - 1]
+    const allIn =
+      built.monthlyPayment +
+      firstYear.propertyTaxMonthly +
+      firstYear.insuranceMonthly +
+      firstYear.hoaMonthly +
+      built.pmiMonthly
 
-  const addScheduleExtras = (schedule, allInMonthly, netMonthly) => {
-    return schedule.map((row) => {
-      const cumulativeAllIn = allInMonthly * 12 * row.year
-      const cumulativeNet = netMonthly * 12 * row.year
-      const homeValue = homePrice * Math.pow(1 + homeValueGrowthRate, row.year)
-
-      return {
-        ...row,
-        total_paid_to_date: round2(cumulativeAllIn),
-        total_paid_after_rent_to_date: round2(cumulativeNet),
-        payoff_today: round2(row.end_balance),
-        home_value: round2(homeValue),
-        profit_loss: round2(homeValue - row.end_balance - cumulativeNet),
-      }
-    })
+    return {
+      monthly_payment_principal_interest: round2(built.monthlyPayment),
+      total_paid_principal_interest: round2(built.monthlyPayment * years * 12),
+      total_interest: round2(built.totalInterest),
+      total_pmi: round2(built.totalPmi),
+      pmi_months: built.pmiMonths,
+      property_tax_monthly: round2(firstYear.propertyTaxMonthly),
+      hoa_monthly: round2(firstYear.hoaMonthly),
+      insurance_monthly: round2(firstYear.insuranceMonthly),
+      pmi_monthly: round2(built.pmiMonthly),
+      all_in_monthly: round2(allIn),
+      net_monthly_after_rent: round2(allIn - rentalIncomeMonthly),
+      // Read off the walk, deposit included, rather than extrapolated.
+      total_paid_all_in: last ? last.total_paid_to_date : round2(downPayment),
+      total_paid_after_rent: last ? last.total_paid_after_rent_to_date : round2(downPayment),
+      amortization_schedule: built.rows,
+    }
   }
 
   return {
@@ -228,32 +237,11 @@ const generateData = ({
       insurance_annual: round2(insuranceAnnual),
       pmi_rate: downPaymentPercent < 0.2 ? pmiRate : 0,
       home_value_growth_rate: homeValueGrowthRate,
+      cost_inflation_rate: costInflationRate,
       rental_income_monthly: round2(rentalIncomeMonthly),
     },
-    '30_year': {
-      monthly_payment_principal_interest: round2(monthlyPayment30),
-      total_paid_principal_interest: round2(totalPaid30),
-      total_interest: round2(totalInterest30),
-      property_tax_monthly: round2(propertyTaxMonthly),
-      hoa_monthly: round2(hoaMonthly),
-      insurance_monthly: round2(insuranceMonthly),
-      pmi_monthly: round2(pmiMonthly),
-      all_in_monthly: round2(allIn30),
-      net_monthly_after_rent: round2(netMonthly30),
-      amortization_schedule: addScheduleExtras(schedule30, allIn30, netMonthly30),
-    },
-    '15_year': {
-      monthly_payment_principal_interest: round2(monthlyPayment15),
-      total_paid_principal_interest: round2(totalPaid15),
-      total_interest: round2(totalInterest15),
-      property_tax_monthly: round2(propertyTaxMonthly),
-      hoa_monthly: round2(hoaMonthly),
-      insurance_monthly: round2(insuranceMonthly),
-      pmi_monthly: round2(pmiMonthly),
-      all_in_monthly: round2(allIn15),
-      net_monthly_after_rent: round2(netMonthly15),
-      amortization_schedule: addScheduleExtras(schedule15, allIn15, netMonthly15),
-    },
+    '30_year': term(rate30, 30),
+    '15_year': term(rate15, 15),
   }
 }
 
@@ -339,6 +327,7 @@ function App() {
     const insuranceAnnual = Math.max(parseNumber(form.insuranceAnnual, 0), 0)
     const pmiRate = Math.max(parseNumber(form.pmiRate, 0), 0) / 100
     const homeValueGrowthRate = Math.max(parseNumber(form.homeValueGrowthRate, 0), 0) / 100
+    const costInflationRate = Math.max(parseNumber(form.costInflationRate, 0), 0) / 100
     const rentalIncomeMonthly = Math.max(parseNumber(form.rentalIncomeMonthly, 0), 0)
 
     return generateData({
@@ -351,6 +340,7 @@ function App() {
       insuranceAnnual,
       pmiRate,
       homeValueGrowthRate,
+      costInflationRate,
       rentalIncomeMonthly,
     })
   }, [form])
@@ -358,10 +348,11 @@ function App() {
   const assumptions = data.assumptions
   const data30 = data['30_year']
   const data15 = data['15_year']
-  const totalAllIn30 = data30.all_in_monthly * 12 * 30
-  const totalNet30 = data30.net_monthly_after_rent * 12 * 30
-  const totalAllIn15 = data15.all_in_monthly * 12 * 15
-  const totalNet15 = data15.net_monthly_after_rent * 12 * 15
+  // Summed from the month-by-month walk, not extrapolated from month one.
+  const totalAllIn30 = data30.total_paid_all_in
+  const totalNet30 = data30.total_paid_after_rent
+  const totalAllIn15 = data15.total_paid_all_in
+  const totalNet15 = data15.total_paid_after_rent
 
   const handleChange = (key) => (event) => {
     setForm((prev) => ({
@@ -460,18 +451,19 @@ function App() {
           accent="accent-warm"
           details={[
             { label: 'Monthly P + I', value: formatMoney(data30.monthly_payment_principal_interest) },
-            { label: 'Property tax', value: formatMoney(data30.property_tax_monthly) },
-            { label: 'HOA', value: formatMoney(data30.hoa_monthly) },
-            { label: 'Insurance', value: formatMoney(data30.insurance_monthly) },
-            { label: 'PMI', value: formatMoney(data30.pmi_monthly) },
+            { label: 'Property tax (yr 1)', value: formatMoney(data30.property_tax_monthly) },
+            { label: 'HOA (yr 1)', value: formatMoney(data30.hoa_monthly) },
+            { label: 'Insurance (yr 1)', value: formatMoney(data30.insurance_monthly) },
+            { label: pmiLabel(data30.pmi_months), value: formatMoney(data30.pmi_monthly) },
             { label: 'All-in monthly', value: formatMoney(data30.all_in_monthly) },
             { label: 'Net after rent', value: formatMoney(data30.net_monthly_after_rent) },
           ]}
           totals={[
             { label: 'Total interest paid', value: formatMoneyShort(data30.total_interest) },
+            { label: 'Total PMI paid', value: formatMoneyShort(data30.total_pmi) },
             { label: 'Total paid (P + I)', value: formatMoneyShort(data30.total_paid_principal_interest) },
-            { label: 'Total paid (all-in)', value: formatMoneyShort(totalAllIn30) },
-            { label: 'Total paid after rent', value: formatMoneyShort(totalNet30) },
+            { label: 'Total out of pocket', value: formatMoneyShort(totalAllIn30) },
+            { label: 'Out of pocket after rent', value: formatMoneyShort(totalNet30) },
           ]}
         />
         <SummaryCard
@@ -479,18 +471,19 @@ function App() {
           accent="accent-cool"
           details={[
             { label: 'Monthly P + I', value: formatMoney(data15.monthly_payment_principal_interest) },
-            { label: 'Property tax', value: formatMoney(data15.property_tax_monthly) },
-            { label: 'HOA', value: formatMoney(data15.hoa_monthly) },
-            { label: 'Insurance', value: formatMoney(data15.insurance_monthly) },
-            { label: 'PMI', value: formatMoney(data15.pmi_monthly) },
+            { label: 'Property tax (yr 1)', value: formatMoney(data15.property_tax_monthly) },
+            { label: 'HOA (yr 1)', value: formatMoney(data15.hoa_monthly) },
+            { label: 'Insurance (yr 1)', value: formatMoney(data15.insurance_monthly) },
+            { label: pmiLabel(data15.pmi_months), value: formatMoney(data15.pmi_monthly) },
             { label: 'All-in monthly', value: formatMoney(data15.all_in_monthly) },
             { label: 'Net after rent', value: formatMoney(data15.net_monthly_after_rent) },
           ]}
           totals={[
             { label: 'Total interest paid', value: formatMoneyShort(data15.total_interest) },
+            { label: 'Total PMI paid', value: formatMoneyShort(data15.total_pmi) },
             { label: 'Total paid (P + I)', value: formatMoneyShort(data15.total_paid_principal_interest) },
-            { label: 'Total paid (all-in)', value: formatMoneyShort(totalAllIn15) },
-            { label: 'Total paid after rent', value: formatMoneyShort(totalNet15) },
+            { label: 'Total out of pocket', value: formatMoneyShort(totalAllIn15) },
+            { label: 'Out of pocket after rent', value: formatMoneyShort(totalNet15) },
           ]}
         />
       </section>
