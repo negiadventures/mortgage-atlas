@@ -2,21 +2,18 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 /**
- * Where the built assets are asked for, which is the whole reason the site was
- * blank.
+ * Served from the root of mortgage.negiventures.com.
  *
- * GitHub Pages serves a project repo from a subfolder, so a Pages build has to
- * ask for `/mortgage-atlas/assets/...`. Vercel serves it from the root of
- * mortgage.negiventures.com, where that path does not exist: the HTML loaded,
- * the script 404ed, no JavaScript ran, and the page rendered as an empty div
- * with no error anywhere to say why.
+ * Worth stating rather than leaving to the default, because getting it wrong is
+ * what made the site blank. It was set to /mortgage-atlas/ for GitHub Pages,
+ * which serves a project repo from a subfolder. Vercel serves from a domain
+ * root, so the HTML asked for /mortgage-atlas/assets/index-*.js, got a 404, and
+ * no JavaScript ran: an empty div, and nothing in the console to explain it
+ * beyond the 404 itself.
  *
- * Hardcoding either value breaks the other host, so the Pages workflow sets
- * DEPLOY_TARGET and everything else gets the root.
+ * Anything other than '/' here needs the host to be serving from that subpath.
  */
-const base = process.env.DEPLOY_TARGET === 'gh-pages' ? '/mortgage-atlas/' : '/'
-
 export default defineConfig({
-  base,
+  base: '/',
   plugins: [react()],
 })
