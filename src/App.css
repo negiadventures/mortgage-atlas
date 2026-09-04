@@ -312,3 +312,155 @@
     animation: none;
   }
 }
+
+/* The "i" beside a label, and the definition it opens. */
+.info {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+.info-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--muted);
+  font-family: var(--font-display, serif);
+  font-size: 0.68rem;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.info-dot:hover,
+.info-dot[aria-expanded='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(217, 143, 61, 0.14);
+}
+
+.info-dot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.info > .info-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  /* Kept in step with MARGIN in Info.jsx, which clamps this to the viewport. */
+  width: min(280px, calc(100vw - 24px));
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #fff;
+  box-shadow: 0 16px 32px rgba(36, 24, 10, 0.16);
+  /* Labels are uppercase and tracked out in places. This never should be. */
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text, #24180a);
+  white-space: normal;
+  cursor: default;
+}
+
+/* The label around this is bold, uppercase or tracked out depending on where
+   it sits. None of that should reach the sentence inside. */
+.info > .info-pop span,
+.info > .info-pop em {
+  font-weight: 400;
+  font-size: 0.85rem;
+  text-transform: none;
+  letter-spacing: normal;
+  line-height: 1.5;
+}
+
+.info > .info-pop strong {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+}
+
+.info > .info-pop em {
+  color: var(--muted);
+  font-style: normal;
+  border-left: 2px solid var(--accent);
+  padding-left: 10px;
+}
+
+.glossary {
+  display: grid;
+  gap: 20px;
+}
+
+.glossary-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 28px;
+}
+
+.glossary-group h4 {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.glossary-group dl {
+  margin: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.glossary-entry dt {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 3px;
+}
+
+.glossary-entry dd {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--muted);
+  display: grid;
+  gap: 6px;
+}
+
+.glossary-entry em {
+  font-style: normal;
+  border-left: 2px solid var(--accent);
+  padding-left: 10px;
+}
+
+.colophon {
+  margin-top: 10px;
+}
+
+.colophon a {
+  color: var(--accent-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.colophon a:hover {
+  color: var(--accent);
+}
+
+.schedule-table th[title] {
+  cursor: help;
+}

@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import { buildSchedule, carryingCostsForYear, round2 } from './mortgage.js'
+import { GLOSSARY, GLOSSARY_GROUPS, tooltipFor } from './glossary.js'
+import { Info } from './Info.jsx'
 import './App.css'
 
 const DEFAULTS = {
@@ -35,6 +37,7 @@ const INPUT_FIELDS = [
   },
   {
     key: 'rate30',
+    info: 'interestRate',
     label: '30-year interest rate',
     unit: '%',
     step: '0.01',
@@ -43,6 +46,7 @@ const INPUT_FIELDS = [
   },
   {
     key: 'rate15',
+    info: 'interestRate',
     label: '15-year interest rate',
     unit: '%',
     step: '0.01',
@@ -257,7 +261,10 @@ const SummaryCard = ({ title, accent, details, totals }) => (
     <dl className="metric-list">
       {details.map((item) => (
         <div key={item.label} className="metric">
-          <dt>{item.label}</dt>
+          <dt>
+            {item.label}
+            <Info term={item.info} />
+          </dt>
           <dd>{item.value}</dd>
         </div>
       ))}
@@ -265,7 +272,10 @@ const SummaryCard = ({ title, accent, details, totals }) => (
     <div className="summary-totals">
       {totals.map((item) => (
         <div key={item.label} className="total">
-          <p>{item.label}</p>
+          <p>
+            {item.label}
+            <Info term={item.info} />
+          </p>
           <strong>{item.value}</strong>
         </div>
       ))}
@@ -284,14 +294,14 @@ const ScheduleTable = ({ title, schedule }) => (
         <thead>
           <tr>
             <th>Year</th>
-            <th>Start balance</th>
-            <th>Principal paid</th>
-            <th>Interest paid</th>
-            <th>Total paid to date (all-in)</th>
-            <th>Paid after rent</th>
-            <th>Payoff today</th>
-            <th>Home value</th>
-            <th className="pl-col">P/L</th>
+            <th title={tooltipFor('startBalance')}>Start balance</th>
+            <th title={tooltipFor('principalPaid')}>Principal paid</th>
+            <th title={tooltipFor('interestPaid')}>Interest paid</th>
+            <th title={tooltipFor('totalPaidToDate')}>Total paid to date (all-in)</th>
+            <th title={tooltipFor('paidAfterRent')}>Paid after rent</th>
+            <th title={tooltipFor('payoffToday')}>Payoff today</th>
+            <th title={tooltipFor('homeValue')}>Home value</th>
+            <th className="pl-col" title={tooltipFor('profitLoss')}>P/L</th>
           </tr>
         </thead>
         <tbody>
@@ -310,6 +320,41 @@ const ScheduleTable = ({ title, schedule }) => (
           ))}
         </tbody>
       </table>
+    </div>
+  </section>
+)
+
+/**
+ * Every definition in one place, open by default.
+ *
+ * The popovers answer a question you already knew you had. This is for the
+ * reader who does not yet know which of these numbers is the one that will
+ * surprise them, and it is also where the table columns are explained, since a
+ * popover inside a horizontally scrolling table would be clipped by it.
+ */
+const Glossary = () => (
+  <section className="card glossary reveal">
+    <header className="table-header">
+      <h3>What these mean</h3>
+      <p>The assumptions behind each figure, written down so you can argue with them.</p>
+    </header>
+    <div className="glossary-groups">
+      {GLOSSARY_GROUPS.map((group) => (
+        <div key={group.title} className="glossary-group">
+          <h4>{group.title}</h4>
+          <dl>
+            {group.keys.map((key) => (
+              <div key={key} className="glossary-entry">
+                <dt>{GLOSSARY[key].term}</dt>
+                <dd>
+                  {GLOSSARY[key].what}
+                  {GLOSSARY[key].note && <em>{GLOSSARY[key].note}</em>}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ))}
     </div>
   </section>
 )
@@ -390,7 +435,10 @@ function App() {
           <div className="input-grid">
             {INPUT_FIELDS.map((field) => (
               <label key={field.key} className="field">
-                <span>{field.label}</span>
+                <span>
+                  {field.label}
+                  <Info term={field.info ?? field.key} />
+                </span>
                 <div className="field-control">
                   <input
                     type="number"
@@ -450,40 +498,40 @@ function App() {
           title="30 year"
           accent="accent-warm"
           details={[
-            { label: 'Monthly P + I', value: formatMoney(data30.monthly_payment_principal_interest) },
-            { label: 'Property tax (yr 1)', value: formatMoney(data30.property_tax_monthly) },
-            { label: 'HOA (yr 1)', value: formatMoney(data30.hoa_monthly) },
-            { label: 'Insurance (yr 1)', value: formatMoney(data30.insurance_monthly) },
-            { label: pmiLabel(data30.pmi_months), value: formatMoney(data30.pmi_monthly) },
-            { label: 'All-in monthly', value: formatMoney(data30.all_in_monthly) },
-            { label: 'Net after rent', value: formatMoney(data30.net_monthly_after_rent) },
+            { label: 'Monthly P + I', value: formatMoney(data30.monthly_payment_principal_interest), info: 'monthlyPI' },
+            { label: 'Property tax (yr 1)', value: formatMoney(data30.property_tax_monthly), info: 'propertyTaxRate' },
+            { label: 'HOA (yr 1)', value: formatMoney(data30.hoa_monthly), info: 'hoaMonthly' },
+            { label: 'Insurance (yr 1)', value: formatMoney(data30.insurance_monthly), info: 'insuranceAnnual' },
+            { label: pmiLabel(data30.pmi_months), value: formatMoney(data30.pmi_monthly), info: 'pmiRate' },
+            { label: 'All-in monthly', value: formatMoney(data30.all_in_monthly), info: 'allInMonthly' },
+            { label: 'Net after rent', value: formatMoney(data30.net_monthly_after_rent), info: 'netAfterRent' },
           ]}
           totals={[
-            { label: 'Total interest paid', value: formatMoneyShort(data30.total_interest) },
-            { label: 'Total PMI paid', value: formatMoneyShort(data30.total_pmi) },
-            { label: 'Total paid (P + I)', value: formatMoneyShort(data30.total_paid_principal_interest) },
-            { label: 'Total out of pocket', value: formatMoneyShort(totalAllIn30) },
-            { label: 'Out of pocket after rent', value: formatMoneyShort(totalNet30) },
+            { label: 'Total interest paid', value: formatMoneyShort(data30.total_interest), info: 'totalInterest' },
+            { label: 'Total PMI paid', value: formatMoneyShort(data30.total_pmi), info: 'totalPmi' },
+            { label: 'Total paid (P + I)', value: formatMoneyShort(data30.total_paid_principal_interest), info: 'totalPI' },
+            { label: 'Total out of pocket', value: formatMoneyShort(totalAllIn30), info: 'totalOutOfPocket' },
+            { label: 'Out of pocket after rent', value: formatMoneyShort(totalNet30), info: 'netAfterRent' },
           ]}
         />
         <SummaryCard
           title="15 year"
           accent="accent-cool"
           details={[
-            { label: 'Monthly P + I', value: formatMoney(data15.monthly_payment_principal_interest) },
-            { label: 'Property tax (yr 1)', value: formatMoney(data15.property_tax_monthly) },
-            { label: 'HOA (yr 1)', value: formatMoney(data15.hoa_monthly) },
-            { label: 'Insurance (yr 1)', value: formatMoney(data15.insurance_monthly) },
-            { label: pmiLabel(data15.pmi_months), value: formatMoney(data15.pmi_monthly) },
-            { label: 'All-in monthly', value: formatMoney(data15.all_in_monthly) },
-            { label: 'Net after rent', value: formatMoney(data15.net_monthly_after_rent) },
+            { label: 'Monthly P + I', value: formatMoney(data15.monthly_payment_principal_interest), info: 'monthlyPI' },
+            { label: 'Property tax (yr 1)', value: formatMoney(data15.property_tax_monthly), info: 'propertyTaxRate' },
+            { label: 'HOA (yr 1)', value: formatMoney(data15.hoa_monthly), info: 'hoaMonthly' },
+            { label: 'Insurance (yr 1)', value: formatMoney(data15.insurance_monthly), info: 'insuranceAnnual' },
+            { label: pmiLabel(data15.pmi_months), value: formatMoney(data15.pmi_monthly), info: 'pmiRate' },
+            { label: 'All-in monthly', value: formatMoney(data15.all_in_monthly), info: 'allInMonthly' },
+            { label: 'Net after rent', value: formatMoney(data15.net_monthly_after_rent), info: 'netAfterRent' },
           ]}
           totals={[
-            { label: 'Total interest paid', value: formatMoneyShort(data15.total_interest) },
-            { label: 'Total PMI paid', value: formatMoneyShort(data15.total_pmi) },
-            { label: 'Total paid (P + I)', value: formatMoneyShort(data15.total_paid_principal_interest) },
-            { label: 'Total out of pocket', value: formatMoneyShort(totalAllIn15) },
-            { label: 'Out of pocket after rent', value: formatMoneyShort(totalNet15) },
+            { label: 'Total interest paid', value: formatMoneyShort(data15.total_interest), info: 'totalInterest' },
+            { label: 'Total PMI paid', value: formatMoneyShort(data15.total_pmi), info: 'totalPmi' },
+            { label: 'Total paid (P + I)', value: formatMoneyShort(data15.total_paid_principal_interest), info: 'totalPI' },
+            { label: 'Total out of pocket', value: formatMoneyShort(totalAllIn15), info: 'totalOutOfPocket' },
+            { label: 'Out of pocket after rent', value: formatMoneyShort(totalNet15), info: 'netAfterRent' },
           ]}
         />
       </section>
@@ -493,10 +541,26 @@ function App() {
         <ScheduleTable title="15 year schedule" schedule={data15.amortization_schedule} />
       </section>
 
+      <Glossary />
+
       <footer className="footnote reveal">
         <p>
           This is a planning tool, not financial advice. Adjust for local taxes,
           insurance, and fees that are unique to your lender and property.
+        </p>
+        <p className="colophon">
+          Built by{' '}
+          <a href="https://negiventures.com" target="_blank" rel="noreferrer">
+            Negi Ventures
+          </a>
+          {' · '}
+          <a
+            href="https://github.com/negiadventures/mortgage-atlas"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Source
+          </a>
         </p>
       </footer>
     </div>
